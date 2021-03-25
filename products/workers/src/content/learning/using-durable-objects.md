@@ -14,7 +14,7 @@ For a high-level introduction to Durable Objects, [see the announcement blog pos
 
 <Aside type="warning" header="Beta">
 
-Durable Objects are currently in closed beta. If you are interested in using them, [request a beta invite](http://www.cloudflare.com/cloudflare-workers-durable-objects-beta).
+Durable Objects are currently in closed beta. If you are interested in using them, [request a beta invite](https://www.cloudflare.com/cloudflare-workers-durable-objects-beta).
 
 </Aside>
 
@@ -25,7 +25,7 @@ Durable Objects are named instances of a class you define.  Just like a class in
 Today, Wrangler does not support managing Durable Objects.  There are four steps to creating a Durable Object:
 
 * [__Writing the class__](#writing-a-class-that-defines-a-durable-object) that defines a Durable Object.
-* [__Configuring the class as Durable Object namespace__](#configuring-the-class-to-define-a-durable-object-namespace) and uploading it to Cloudflare's servers.
+* [__Configuring the class as Durable Object namespace__](#defining-a-durable-object-namespace) and uploading it to Cloudflare's servers.
 * [__Binding that namespace__](#binding-to-the-durable-object-namespace) into a Worker.
 * [__Instantiating and communicating with a Durable Object__](#instantiating-and-communicating-with-a-durable-object) from a running Worker via the Fetch API.
 
@@ -71,13 +71,13 @@ Durable Objects gain access to a [persistent storage API](/runtime-apis/durable-
 ```js
 export class DurableObjectExample {
     constructor(state, env) {
-        this.storage = state.storage;
+        this.state = state;
     }
 
     async fetch(request) {
         let ip = request.headers.get('CF-Connecting-IP');
         let data = await request.text();
-        let storagePromise = this.storage.put(ip, data);
+        let storagePromise = this.state.storage.put(ip, data);
         await storagePromise;
         return new Response(ip + ' stored ' + data);
     }
@@ -85,12 +85,12 @@ export class DurableObjectExample {
 }
 ```
 
-Each individual storage operation behaves like a database transaction. More complex use cases can wrap multiple storage statements in a transaction. For example, this actor puts a key if and only if its current value matches the provided "If-Match" header value:
+Each individual storage operation behaves like a database transaction. More complex use cases can wrap multiple storage statements in a transaction. For example, this Durable Object puts a key if and only if its current value matches the provided "If-Match" header value:
 
 ```js
 export class DurableObjectExample {
     constructor(state, env) {
-        this.storage = state.storage;
+        this.state = state;
     }
 
     async fetch(request) {
@@ -98,7 +98,7 @@ export class DurableObjectExample {
         let ifMatch = request.headers.get('If-Match');
         let newValue = await request.text();
         let changedValue = false;
-        await this.storage.transaction(async txn => {
+        await this.state.storage.transaction(async txn => {
             let currentValue = await txn.get(key);
             if (currentValue != ifMatch && ifMatch != '*') {
                 txn.rollback();
@@ -113,7 +113,7 @@ export class DurableObjectExample {
 }
 ```
 
-Transactions operate at a [serializable isolation level](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable).  This means transactions can fail if they conflict with a concurrent transaction being run by the same Durable Object.  
+Transactions operate at a [serializable isolation level](https://en.wikipedia.org/wiki/Isolation_(database_systems)#Serializable).  This means transactions can fail if they conflict with a concurrent transaction being run by the same Durable Object.
 
 Transactions are transparently and automatically retried once by rerunning the provided function before returning an error.  To avoid transaction conflicts, don't use transactions when you don't need them, don't hold transactions open any longer than necessary, and limit the number of key-value pairs operated on by each transaction.
 
@@ -132,11 +132,11 @@ This is shown in the [Counter example](#example---counter) below, which is parti
 ```js
 export class Counter {
     constructor(state, env) {
-        this.storage = state.storage;
+        this.state = state;
     }
 
     async initialize() {
-        let stored = await this.storage.get("value");
+        let stored = await this.state.storage.get("value");
         // after initialization, future reads don't need to access storage!
         this.value = stored || 0;
     }
@@ -160,7 +160,7 @@ export class Counter {
 
 The following describes the raw HTTP API to upload your class definition, define a Durable Object namespace, and then bind another worker to be able to talk to it. This functionality is not yet available in Wrangler, but will be very soon, at which point these instructions will become much simpler.
 
-We've included a helper script that will handle creating configuring and uploading the script for you.  See the [configuration script](#configuration-script) section below.
+We've included a helper script that will handle configuring a namespace and uploading its script for you.  See the [configuration script](#configuration-script) section below.
 
 </Aside>
 
@@ -272,7 +272,7 @@ When uploading the worker that needs to call your Durable Object, you will again
 Upload your worker like this, where `CALLING_SCRIPT_NAME` is the name you've chosen for your calling worker:
 
 ```sh
-$ curl -i -H "Authorization: Bearer ${API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_TAG}/workers/scripts/${CALLING_SCRIPT_NAME}" -X PUT -F "metadata=@calling-worker.json;type=application/json" -F "script=@calling-worker.js;type=application/javascript+module"
+$ curl -i -H "Authorization: Bearer ${API_TOKEN}" "https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_TAG}/workers/scripts/${CALLING_SCRIPT_NAME}" -X PUT -F "metadata=@calling-worker.json;type=application/json" -F "script=@calling-worker.js;type=application/javascript"
 ```
 
 <Aside>
@@ -289,8 +289,6 @@ We're done! If you deploy your calling worker and make a request to it, you'll s
 $ curl -H "Content-Type: text/plain" https://calling-worker.<your-namespace>.workers.dev/ --data "important data!"
 ***.***.***.*** stored important data!
 ```
-
-
 
 ## Instantiating and communicating with a Durable Object
 
@@ -363,9 +361,9 @@ Currently, Durable Objects do not migrate between locations after initial creati
 
 Because of these factors, when using string-derived object IDs, you may find that request latency varies considerably between objects, while system-generated IDs will result in consistently low latency. Once our work is complete, you should be able to expect that variability exists only in initial creation latency for string-derived IDs.
 
-### Cross-object Storage Access
+### Enumerating objects
 
-The storage API is scoped to a single Durable Object.  It is not currently possible to access data stored in a Durable Object from a different Durable Object or external API. There is no support for listing objects or bulk imports or exports.
+There is currently no support for generating a list of all existing objects, nor any way to bulk export objects.
 
 ### Performance
 
@@ -397,12 +395,20 @@ async function handleRequest(request, env) {
 
 export class Counter {
     constructor(state, env) {
-        this.storage = state.storage;
+        this.state = state;
     }
 
     async initialize() {
-        let stored = await this.storage.get("value");
-        this.value = stored || 0;
+        try {
+            let stored = await this.state.storage.get("value");
+            this.value = stored || 0;
+        } catch (err) {
+            // If anything throws during initialization then we
+            // need to be sure that a future request will retry by
+            // creating another `initializePromise` below.
+            this.initializePromise = undefined;
+            throw err;
+        }
     }
 
     // Handle HTTP requests from clients.
@@ -415,14 +421,15 @@ export class Counter {
 
         // Apply requested action.
         let url = new URL(request.url);
+        let currentValue = this.value;
         switch (url.pathname) {
         case "/increment":
-            ++this.value;
-            await this.storage.put("value", this.value);
+            currentValue = ++this.value;
+            await this.state.storage.put("value", this.value);
             break;
         case "/decrement":
-            --this.value;
-            await this.storage.put("value", this.value);
+            currentValue = --this.value;
+            await this.state.storage.put("value", this.value);
             break;
         case "/":
             // Just serve the current value. No storage calls needed!
@@ -431,8 +438,12 @@ export class Counter {
             return new Response("Not found", {status: 404});
         }
 
-        // Return current value.
-        return new Response(this.value);
+        // Return `currentValue`. Note that `this.value` may have been
+        // incremented or decremented by a concurrent request when we
+        // yielded the event loop to `await` the `storage.put` above!
+        // That's why we stored the counter value created by this
+        // request in `currentValue` before we used `await`.
+        return new Response(currentValue);
     }
 }
 ```
