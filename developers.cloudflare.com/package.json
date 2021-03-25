@@ -69,5 +69,6 @@
     "publish": "npm run build && wrangler publish",
     "serve": "gatsby serve",
     "start": "npm run develop"
-  }
+  },
+  "main": ".eslintrc.js"
 }
