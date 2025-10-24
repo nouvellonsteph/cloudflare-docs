@@ -1,12 +1,12 @@
 #:schema ./node_modules/wrangler/config-schema.json
 name = "cloudflare-docs"
-account_id = "b54f07a6c269ecca2fa60f1ae4920c99"
+account_id = "121287a0c6e6260ec930655e6b39a3a8"
 compatibility_date = "2025-06-02"
 compatibility_flags = ["nodejs_compat"]
 main = "./worker/index.ts"
 
 workers_dev = true
-route = { pattern = "developers.cloudflare.com/*", zone_name = "developers.cloudflare.com" }
+route = { pattern = "cloudflare-docs.justalittlebyte.ovh/*", zone_name = "justalittlebyte.ovh" }
 
 rules = [
 	{ type = "Text", globs = ["**/__redirects"], fallthrough = true },
